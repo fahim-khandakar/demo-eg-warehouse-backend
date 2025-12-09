@@ -12,20 +12,7 @@ const allPowers = [
   "edit event",
 ] as const;
 
-//Open,Delivered,Badbuffer Pending,Closed, Approved, Rejected,Completed
-
-// const allStatus = [
-//   "Open",
-//   "Delivered",
-//   "Badbuffer",
-//   "Pending",
-//   "Closed",
-//   "Approved",
-//   "Rejected",
-//   "Completed",
-// ] as const;
-
-// don't change the array order
+// DON'T CHANGE THE ORDER
 const allStatus = [
   "AP",
   "APPROVED",
@@ -41,7 +28,9 @@ const allStatus = [
 ] as const;
 
 export const bootstrapSuperAdmin = async () => {
-  // Check if super admin already exists
+  // ------------------------------
+  // CHECK IF ADMIN EXISTS
+  // ------------------------------
   const existing = await prisma.user.findUnique({
     where: { email: config.default_super_admin },
   });
@@ -52,7 +41,9 @@ export const bootstrapSuperAdmin = async () => {
   }
 
   await prisma.$transaction(async tx => {
-    // Ensure all required powers exist
+    // ------------------------------
+    // SEED POWERS (SAFE)
+    // ------------------------------
     const powers = await Promise.all(
       allPowers.map(name =>
         tx.power.upsert({
@@ -63,42 +54,44 @@ export const bootstrapSuperAdmin = async () => {
       ),
     );
 
-    // Ensure all statuses exist
-    const statuses = await Promise.all(
-      allStatus.map(async (name, index) => {
-        const existing = await tx.status.findFirst({
-          where: { name },
-        });
+    // ------------------------------
+    // SEED STATUSES (MANUAL ID SAFE)
+    // ------------------------------
+    for (let i = 0; i < allStatus.length; i++) {
+      const name = allStatus[i];
+      const id = i + 1;
 
-        if (existing) {
-          return tx.status.update({
-            where: { id: existing.id },
-            data: { name },
-          });
-        }
+      await tx.status.upsert({
+        where: { name }, // If exists, update
+        update: { name },
+        create: {
+          // If not exists, create manual ID
+          id,
+          name,
+        },
+      });
+    }
 
-        return tx.status.create({
-          data: {
-            id: index + 1,
-            name,
-          },
-        });
-      }),
-    );
-
-    // Ensure "Head Office" branch exists
+    // ------------------------------
+    // SEED BRANCH
+    // ------------------------------
     const branch = await tx.branch.upsert({
       where: { name: "Head Office" },
       update: {},
       create: { name: "Head Office" },
     });
 
-    // Hash password
+    // ------------------------------
+    // HASH PASSWORD
+    // ------------------------------
     const hashedPassword = await bcrypt.hash(
       config.default_pass || "NEC@123456",
       Number(config.bycrypt_salt_rounds),
     );
 
+    // ------------------------------
+    // CREATE SUPER ADMIN
+    // ------------------------------
     const result = await tx.user.create({
       data: {
         email: config.default_super_admin,
@@ -113,7 +106,7 @@ export const bootstrapSuperAdmin = async () => {
             designation: "Super Admin",
             profileImage: "",
             powers: {
-              connect: powers.map(power => ({ id: power.id })),
+              connect: powers.map(p => ({ id: p.id })),
             },
           },
         },
@@ -126,7 +119,7 @@ export const bootstrapSuperAdmin = async () => {
       email: result.email,
       branch: branch.name,
       powers: powers.map(p => p.name),
-      statuses: statuses.map(s => s.name),
+      statuses: allStatus,
     });
   });
 };
