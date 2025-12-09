@@ -1,0 +1,130 @@
+import express from "express";
+import { ENUM_USER_ROLE } from "../../../enum/user";
+import auth from "../../middlewares/auth";
+import { AnalystController } from "./analyst.controller";
+
+const router = express.Router();
+
+router.get(
+  "/",
+  auth(
+    ENUM_USER_ROLE.SUPER_ADMIN,
+    ENUM_USER_ROLE.ADMIN,
+    ENUM_USER_ROLE.USER,
+    ENUM_USER_ROLE.PRINCIPAL,
+  ),
+  AnalystController.getAnalystLoan,
+);
+router.get(
+  "/partner",
+  auth(
+    ENUM_USER_ROLE.SUPER_ADMIN,
+    ENUM_USER_ROLE.ADMIN,
+    ENUM_USER_ROLE.USER,
+    ENUM_USER_ROLE.PRINCIPAL,
+  ),
+  AnalystController.getPartnerActivity,
+);
+router.get(
+  "/pod/partner",
+  auth(
+    ENUM_USER_ROLE.SUPER_ADMIN,
+    ENUM_USER_ROLE.ADMIN,
+    ENUM_USER_ROLE.USER,
+    ENUM_USER_ROLE.PRINCIPAL,
+  ),
+  AnalystController.getPODPartnerActivity,
+);
+router.get(
+  "/order",
+  auth(
+    ENUM_USER_ROLE.SUPER_ADMIN,
+    ENUM_USER_ROLE.ADMIN,
+    ENUM_USER_ROLE.USER,
+    ENUM_USER_ROLE.PRINCIPAL,
+  ),
+  AnalystController.getMostOrderFromDB,
+);
+router.get(
+  "/old-order",
+  auth(
+    ENUM_USER_ROLE.SUPER_ADMIN,
+    ENUM_USER_ROLE.ADMIN,
+    ENUM_USER_ROLE.USER,
+    ENUM_USER_ROLE.PRINCIPAL,
+  ),
+  AnalystController.getOldOrdersFromDB,
+);
+router.get(
+  "/order-request",
+  auth(
+    ENUM_USER_ROLE.SUPER_ADMIN,
+    ENUM_USER_ROLE.ADMIN,
+    ENUM_USER_ROLE.USER,
+    ENUM_USER_ROLE.PRINCIPAL,
+  ),
+  AnalystController.getCustomerRequestAnalytics,
+);
+
+router.get(
+  "/partner/loan",
+  auth(ENUM_USER_ROLE.PARTNER),
+  AnalystController.getPartnerOrderAnalystFromDB,
+);
+router.get(
+  "/partner/events",
+  auth(ENUM_USER_ROLE.PARTNER),
+  AnalystController.getPartnerEventAnalystFromDB,
+);
+router.get(
+  "/activity",
+  auth(
+    ENUM_USER_ROLE.SUPER_ADMIN,
+    ENUM_USER_ROLE.ADMIN,
+    ENUM_USER_ROLE.USER,
+    ENUM_USER_ROLE.PRINCIPAL,
+  ),
+  AnalystController.getActivityLogs,
+);
+router.get(
+  "/myactivity",
+  auth(
+    ENUM_USER_ROLE.SUPER_ADMIN,
+    ENUM_USER_ROLE.ADMIN,
+    ENUM_USER_ROLE.USER,
+    ENUM_USER_ROLE.PRINCIPAL,
+  ),
+  AnalystController.getMyActivityLogs,
+);
+router.get(
+  "/pod",
+  auth(
+    ENUM_USER_ROLE.SUPER_ADMIN,
+    ENUM_USER_ROLE.ADMIN,
+    ENUM_USER_ROLE.USER,
+    ENUM_USER_ROLE.PRINCIPAL,
+  ),
+  AnalystController.getAnalystForPOD,
+);
+router.get(
+  "/pod/type",
+  auth(
+    ENUM_USER_ROLE.SUPER_ADMIN,
+    ENUM_USER_ROLE.ADMIN,
+    ENUM_USER_ROLE.USER,
+    ENUM_USER_ROLE.PRINCIPAL,
+  ),
+  AnalystController.getShipmentCompletedAnalytics,
+);
+router.get(
+  "/pod/shipments",
+  auth(
+    ENUM_USER_ROLE.SUPER_ADMIN,
+    ENUM_USER_ROLE.ADMIN,
+    ENUM_USER_ROLE.USER,
+    ENUM_USER_ROLE.PRINCIPAL,
+  ),
+  AnalystController.getAllShipmentStatusAnalytics,
+);
+
+export const analystRoutes = router;

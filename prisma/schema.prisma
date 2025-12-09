@@ -1,0 +1,514 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-1.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id               Int     @id @default(autoincrement())
+  email            String  @unique
+  password         String
+  role             String
+  active           Boolean @default(true)
+  verified         Boolean @default(false)
+  isPasswordChange Boolean @default(false)
+
+  verificationToken   String?   @unique
+  verificationExpires DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  details      UserDetails?
+  UserActivity UserActivity[]
+  otps         UserOtp[]
+}
+
+model UserDetails {
+  id           Int     @id @default(autoincrement())
+  userId       Int     @unique
+  user         User    @relation(fields: [userId], references: [id])
+  name         String
+  email        String
+  designation  String
+  contactNo    String
+  profileImage String
+  branchId     Int?
+  powers       Power[] @relation("UserDetailsPowers")
+
+  branch    Branch?  @relation(fields: [branchId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  Scrap     Scrap[]
+
+  @@unique([email, contactNo])
+  @@map("user_details")
+}
+
+model Power {
+  id    Int           @id @default(autoincrement())
+  name  String        @unique
+  users UserDetails[] @relation("UserDetailsPowers")
+
+  @@map("powers")
+}
+
+model Branch {
+  id    Int           @id @default(autoincrement())
+  name  String        @unique
+  users UserDetails[]
+
+  @@map("branches")
+}
+
+model Location {
+  id        Int         @id @default(autoincrement())
+  rack      String      @unique
+  inventory Inventory[]
+
+  @@map("location")
+}
+
+model UserOtp {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  otp       String
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id])
+}
+model PrincipalOtp {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  otp       String
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+
+  user Principal @relation(fields: [userId], references: [id])
+}
+
+model PartnerOtp {
+  id        Int      @id @default(autoincrement())
+  partnerId Int
+  otp       String
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+
+  partner Partner @relation(fields: [partnerId], references: [id])
+}
+
+model Partner {
+  id             Int     @id @default(autoincrement())
+  contact_person String
+  email          String  @unique
+  password       String
+  company        String
+  profileImage   String
+  crsId          String?
+  contactNo      String
+  active         Boolean @default(true)
+  verified       Boolean @default(false)
+
+  verificationToken   String?   @unique
+  verificationExpires DateTime?
+
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  orders       Order[]
+  preOrders    CustomerRequest[]
+  UserActivity UserActivity[]
+  Event        Event[]
+  ReturnEvent  ReturnEvent[]
+  otps         PartnerOtp[]
+
+  @@map("partners")
+}
+
+model Principal {
+  id             Int     @id @default(autoincrement())
+  contact_person String
+  email          String  @unique
+  password       String
+  company        String?
+  profileImage   String?
+  contactNo      String
+  active         Boolean @default(true)
+  verified       Boolean @default(false)
+
+  verificationToken   String?   @unique
+  verificationExpires DateTime?
+
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  UserActivity UserActivity[]
+  otps         PrincipalOtp[]
+
+  @@map("principals")
+}
+
+model Part {
+  id                   Int                     @id @default(autoincrement())
+  name                 String                  @unique
+  alternatePartName    String?
+  alternatePartNametwo String?
+  description          String?
+  totalQty             Int                     @default(0)
+  availableQty         Int                     @default(0)
+  loanQty              Int                     @default(0)
+  scrapQty             Int                     @default(0)
+  sell                 Int                     @default(0)
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  Scrap                Scrap[]
+  customerRequests     CustomerRequestedPart[]
+  inventory            Inventory[]
+  orderParts           OrderPart[]
+
+  @@map("parts")
+}
+
+model Inventory {
+  id         Int         @id @default(autoincrement())
+  partId     Int
+  locationId Int
+  qty        Int
+  poll       String
+  part       Part        @relation(fields: [partId], references: [id])
+  location   Location    @relation(fields: [locationId], references: [id])
+  orders     OrderPart[]
+
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  InventoryLog InventoryLog[]
+
+  @@unique([locationId, partId, poll])
+  @@map("inventory")
+}
+
+model InventoryLog {
+  id          Int      @id @default(autoincrement())
+  inventoryId Int
+  eventNo     String?
+  remarks     String?
+  addedQty    Int
+  createdAt   DateTime @default(now())
+
+  inventory Inventory @relation(fields: [inventoryId], references: [id])
+
+  @@map("inventory_logs")
+}
+
+model Order {
+  id                  Int        @id @default(autoincrement())
+  invoiceId           String     @unique
+  partnerId           Int
+  qty                 Int
+  statusId            Int      
+  callDate            DateTime?
+  closeDate           DateTime?
+  saidId              String?
+  caseId              String
+  eventNo             String?
+  remarks             String?
+  customerRequest     CustomerRequest? // back-reference, optional
+  partner             Partner          @relation(fields: [partnerId], references: [id])
+  status              Status           @relation(fields: [statusId], references: [id])
+  orderPart           OrderPart?       @relation
+
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  @@map("orders")
+}
+
+model OrderPart {
+  id          Int    @id @default(autoincrement())
+  orderId     Int    @unique
+  partId      Int
+  inventoryId Int
+  qty         Int
+  description String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order     Order     @relation(fields: [orderId], references: [id])
+  part      Part      @relation(fields: [partId], references: [id])
+  inventory Inventory @relation(fields: [inventoryId], references: [id])
+
+  @@map("order_parts")
+}
+
+model CustomerRequest {
+  id          Int        @id @default(autoincrement())
+  partnerId   Int
+  callDate    DateTime?
+  caseId      String
+  saidId      String?
+  eventNo     String?
+  approvalImage String?
+  remarks     String?
+  statusId    Int     
+  orderId     Int?       @unique                // defining side, optional
+  order       Order?     @relation(fields: [orderId], references: [id])
+  parts       CustomerRequestedPart? @relation // optional
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  partner Partner @relation(fields: [partnerId], references: [id])
+  status  Status  @relation(fields: [statusId], references: [id])
+
+  @@map("customer_requests")
+}
+
+model CustomerRequestedPart {
+  id                Int      @id @default(autoincrement())
+  customerRequestId Int      @unique // Enforcing one-to-one relation by making this field unique
+  partId            Int
+  qty               Int
+  description       String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  customerRequest CustomerRequest @relation(fields: [customerRequestId], references: [id])
+  part            Part            @relation(fields: [partId], references: [id])
+
+  @@map("customer_requested_parts")
+}
+
+model Scrap {
+  id            Int     @id @default(autoincrement())
+  userId        Int
+  partId        Int
+  scrapQty      Int     @default(0) // renamed for clarity
+  reason        String
+  attachmentUrl String? // optional field for image/file
+  comment       String? // optional remarks
+
+  part Part        @relation(fields: [partId], references: [id])
+  user UserDetails @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("scraps")
+}
+
+model Status {
+  id              Int               @id
+  name            String            @unique
+  orders          Order[]
+  Shipment        Shipment[]
+  Event           Event[]
+  customerRequest CustomerRequest[]
+  ReturnEvent     ReturnEvent[]
+  Receipt         Receipt[]
+
+  @@map("status")
+}
+
+/// ship
+model Shipment {
+  id            Int          @id @default(autoincrement())
+  shipToId      Int
+  control       String
+  hawb          String?
+  invoiceNo     String?
+  invoiceValue  Float @default(0)
+  totalValue    Float        @default(0)
+  totalWeight   Float        @default(0)
+  sendBy        String // e.g., "cargo", "road"
+  totalQuantity Int          @default(0)
+  statusId      Int
+  type          ShipmentType @default(DEFAULT)
+  // Relationships to Status, SendTo, and Event models
+  status        Status       @relation(fields: [statusId], references: [id])
+  shipTo        ShipTo       @relation(fields: [shipToId], references: [id])
+  events        Event[] // Optional back-reference to Event
+  boxes         Box[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ReturnEvent ReturnEvent[]
+
+  @@unique([control, type])
+  @@map("shipment")
+}
+
+model ShipTo {
+  id        Int     @id @default(autoincrement())
+  email     String?
+  company   String
+  contactNo String
+  fax       String? // Lowercase 'fax' for consistency
+  address   String
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  Shipment  Shipment[]
+
+  @@unique([company, contactNo])
+  @@map("shipTo")
+}
+
+model Product {
+  id       Int    @id @default(autoincrement())
+  name     String
+  hsCode   String // HS code for categorization
+  quantity Int
+
+  ReturnEvent ReturnEvent[]
+  events      Event[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("products")
+}
+
+model Box {
+  id         Int    @id @default(autoincrement())
+  shipmentId Int
+  boxNo      String
+  boxWeight  Float  @default(0)
+  width      Float  @default(0)
+  height     Float  @default(0)
+  length     Float  @default(0)
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id])
+  events   Event[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([shipmentId, boxNo])
+  @@map("boxes")
+}
+
+model Event {
+  id          Int          @id @default(autoincrement())
+  eventNo     String
+  type        ShipmentType @default(DEFAULT)
+  productId   Int
+  shipmentId  Int
+  boxId       Int
+  partnerId   Int
+  description String?
+  btrc        Boolean? // BTRC, optional field
+  value       Float
+  weight      Float
+  dimensionL  Int
+  dimensionW  Int
+  dimensionH  Int
+  coo         String
+  statusId    Int          @default(1)
+  receiptId   Int?
+
+  // Relationships with Product and Shipment
+  product  Product  @relation(fields: [productId], references: [id])
+  shipment Shipment @relation(fields: [shipmentId], references: [id])
+  ox       Box      @relation(fields: [boxId], references: [id])
+  status   Status   @relation(fields: [statusId], references: [id])
+  receipt  Receipt? @relation(fields: [receiptId], references: [id])
+  partner  Partner  @relation(fields: [partnerId], references: [id])
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  ReturnEvent ReturnEvent?
+
+  @@unique([eventNo, type])
+  @@map("events")
+}
+
+model Receipt {
+  id          Int      @id @default(autoincrement())
+  receiptNo   String   @unique
+  totalValue  Float    @default(0)
+  totalWeight Float    @default(0)
+  statusId    Int      @default(3)
+  // Relationships
+  status      Status   @relation(fields: [statusId], references: [id])
+  events      Event[]
+  createdAt   DateTime @default(now())
+
+  @@map("receipts")
+}
+
+model ReturnBadPartHawb {
+  id           Int           @id @default(autoincrement())
+  hawbNo   String        @unique
+  description  String?
+  
+  returnEvents ReturnEvent[]  // 1 HWAB → many ReturnEvents
+
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+
+model ReturnEvent {
+  id          Int     @id @default(autoincrement())
+  eventId     Int     @unique // each Event only has one ReturnEvent
+  productId   Int // Returned broken product
+  partnerId   Int
+  shipmentId  Int?
+  description String?
+  hwabId      Int   
+  statusId    Int     @default(4)
+
+  hwab     ReturnBadPartHawb       @relation(fields: [hwabId], references: [id])
+  event    Event     @relation(fields: [eventId], references: [id])
+  product  Product   @relation(fields: [productId], references: [id])
+  partner  Partner   @relation(fields: [partnerId], references: [id])
+  status   Status    @relation(fields: [statusId], references: [id])
+  Shipment Shipment? @relation(fields: [shipmentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("return_events")
+}
+
+model UserActivity {
+  id         Int      @id @default(autoincrement())
+  userId     Int? // Nullable for partner actions
+  partnerId  Int? // Nullable for user actions
+  principalId  Int? // Nullable for user actions
+  action     String // "LOGIN", "ADD_INVENTORY", "EDIT_PART"
+  entityId   Int? // ID of related entity (e.g., inventoryId, partId)
+  entityType String? // "INVENTORY", "PART", "ORDER" (so you can track different entities)
+  ipAddress  String? // User's IP address
+  statusCode Int? // Status
+  timestamp  DateTime @default(now())
+  metadata   Json? // Additional info (e.g., old vs. new data, request details)
+
+  user    User?    @relation(fields: [userId], references: [id])
+  partner Partner? @relation(fields: [partnerId], references: [id])
+  principal Principal? @relation(fields: [principalId], references: [id])
+
+  @@index([userId])
+  @@index([partnerId])
+  @@map("user_activities")
+}
+
+enum ShipmentType {
+  DEFAULT
+  INBOUND // Principal → Us
+  FORWARD // Us → Partner
+  Completed // ready to ship
+  RETURN // Us → Principal
+  CANCELLED
+}
