@@ -9,7 +9,7 @@ export const sendVerificationEmail = async (
   const transporter = nodemailer.createTransport({
     host: config.host,
 
-    port: config.mailPort,
+    port: Number(process.env.SMTP_PORT) || 465,
     secure: false,
     auth: {
       user: config.email,
