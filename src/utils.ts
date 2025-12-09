@@ -65,16 +65,25 @@ export const bootstrapSuperAdmin = async () => {
 
     // Ensure all statuses exist
     const statuses = await Promise.all(
-      allStatus.map((name, index) =>
-        tx.status.upsert({
-          where: { id: index + 1 },
-          update: { name },
-          create: {
+      allStatus.map(async (name, index) => {
+        const existing = await tx.status.findFirst({
+          where: { name },
+        });
+
+        if (existing) {
+          return tx.status.update({
+            where: { id: existing.id },
+            data: { name },
+          });
+        }
+
+        return tx.status.create({
+          data: {
             id: index + 1,
             name,
           },
-        }),
-      ),
+        });
+      }),
     );
 
     // Ensure "Head Office" branch exists
