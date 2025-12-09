@@ -1,7 +1,7 @@
 {
   "name": "eg_server",
   "version": "1.0.3",
-  "main": "server.js",
+  "main": "src/server.ts",
   "scripts": {
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",

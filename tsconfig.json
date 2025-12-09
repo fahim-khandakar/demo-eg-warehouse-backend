@@ -1,11 +1,16 @@
 {
   "extends": "@tsconfig/node20/tsconfig.json",
   "compilerOptions": {
+    "target": "es2016",
     "outDir": "./dist",
+    "strict": true,
     "rootDir": "./src",
+    "module": "node16",
+    "moduleResolution": "node16",
     "forceConsistentCasingInFileNames": true,
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true
+    "emitDecoratorMetadata": true,
+    "skipLibCheck": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
