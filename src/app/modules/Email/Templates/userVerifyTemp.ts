@@ -7,9 +7,9 @@ export const sendVerificationEmail = async (
   token: string,
 ): Promise<boolean> => {
   const transporter = nodemailer.createTransport({
-    host: "mail.tasktechnology.net",
+    host: config.host,
 
-    port: 587,
+    port: config.mailPort,
     secure: false,
     auth: {
       user: config.email,

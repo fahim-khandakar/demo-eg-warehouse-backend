@@ -15,6 +15,8 @@ export default {
   bycrypt_salt_rounds: process.env.BCRYPT_SALT_ROUNDS,
   email: process.env.EMAIL,
   appPass: process.env.APP_PASS,
+  host: process.env.SMTP_HOST,
+  mailPort: Number(process.env.SMTP_PORT) || 465,
   APP_URL: baseAppUrl,
   verifyUrl: `${baseAppUrl}/auth/verify`,
   jwt: {
