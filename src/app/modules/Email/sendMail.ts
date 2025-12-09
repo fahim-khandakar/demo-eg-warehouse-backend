@@ -12,6 +12,12 @@ export async function sendEmail(to: string, subject: string, html: string) {
         user: config.email,
         pass: config.appPass,
       },
+      pool: true,
+      maxConnections: 5,
+      maxMessages: 100,
+      connectionTimeout: 10000, // 10 sec timeout
+      greetingTimeout: 5000, // 5 sec greeting wait
+      socketTimeout: 20000, // 20 sec socket timeout
     });
     if (to) {
       await transporter.sendMail({
