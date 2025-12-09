@@ -5,9 +5,9 @@ import ApiError from "../../../errors/ApiError";
 export async function sendEmail(to: string, subject: string, html: string) {
   try {
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: Number(process.env.SMTP_PORT) === 465,
+      host: "necgroupbd.net",
+      port: 465,
+      secure: true,
       auth: {
         user: config.email,
         pass: config.appPass,
