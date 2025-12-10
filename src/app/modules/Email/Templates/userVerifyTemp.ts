@@ -1,4 +1,3 @@
-import nodemailer from "nodemailer";
 import config from "../../../../config";
 import { errorlogger } from "../../../../shared/logger";
 
@@ -6,16 +5,16 @@ export const sendVerificationEmail = async (
   to: string,
   token: string,
 ): Promise<boolean> => {
-  const transporter = nodemailer.createTransport({
-    host: config.host,
+  // const transporter = nodemailer.createTransport({
+  //   host: config.host,
 
-    port: Number(config.mailPort) || 465,
-    secure: false,
-    auth: {
-      user: config.email,
-      pass: config.appPass,
-    },
-  });
+  //   port: Number(config.mailPort) || 465,
+  //   secure: false,
+  //   auth: {
+  //     user: config.email,
+  //     pass: config.appPass,
+  //   },
+  // });
   const verificationLink = `${config.verifyUrl}?token=${token}`;
   try {
     const mailOptions = {
@@ -81,7 +80,7 @@ export const sendVerificationEmail = async (
     </div>`,
     };
 
-    await transporter.sendMail(mailOptions);
+    // await transporter.sendMail(mailOptions);
     return true;
   } catch (error) {
     errorlogger.error("Email sending failed:", error);

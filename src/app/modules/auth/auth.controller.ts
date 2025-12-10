@@ -8,13 +8,15 @@ import { AuthService } from "./auth.service";
 export const loginUser = catchAsync(async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
-  await AuthService.validatePassword(email, password, "user");
-  const result = await AuthService.sendLoginOtp(email, "user");
+  const result = await AuthService.login(email, password, "user");
+  // await AuthService.validatePassword(email, password, "user");
+  // const result = await AuthService.sendLoginOtp(email, "user");
 
   sendResponse(res, {
     statusCode: 200,
     success: true,
-    message: result.message,
+    message: "User logged in successfully",
+    data: result,
   });
 });
 
@@ -39,13 +41,15 @@ export const verifyUserOTP = catchAsync(async (req: Request, res: Response) => {
 export const loginPartner = catchAsync(async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
-  await AuthService.validatePassword(email, password, "partner");
-  const result = await AuthService.sendLoginOtp(email, "partner");
+  const result = await AuthService.login(email, password, "partner");
+  // await AuthService.validatePassword(email, password, "partner");
+  // const result = await AuthService.sendLoginOtp(email, "partner");
 
   sendResponse(res, {
     statusCode: 200,
     success: true,
-    message: result.message,
+    message: "User logged in successfully",
+    data: result,
   });
 });
 

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Inventory, InventoryLog, Prisma } from "@prisma/client";
 import ApiError from "../../../../errors/ApiError";
 import { paginationHelpers } from "../../../../helpers/paginationHelper";
@@ -74,78 +75,113 @@ const insertIntoDB = async (
   });
 };
 
-const insertMultipleIntoDB = async (
+export const insertMultipleIntoDB = async (
   data: IInventoryCreatedEventMultiple[],
-): Promise<Inventory[]> => {
+  chunkSize = 50, // adjust per batch
+) => {
   if (!Array.isArray(data) || data.length === 0) {
     throw new ApiError(400, "No inventory data provided.");
   }
 
-  return await prisma.$transaction(async tx => {
-    const inventories: Inventory[] = [];
+  const inventories: any[] = [];
 
-    for (const item of data) {
-      const { name, qty, rack, eventNo, poll } = item;
+  // Split data into chunks
+  for (let i = 0; i < data.length; i += chunkSize) {
+    const chunk = data.slice(i, i + chunkSize);
 
-      try {
-        const [location, part] = await Promise.all([
-          tx.location.findUniqueOrThrow({ where: { rack } }),
-          tx.part.findUniqueOrThrow({ where: { name } }),
-        ]);
+    // 1️⃣ Prepare unique part & rack names
+    const partNames = [...new Set(chunk.map(d => d.name))];
+    const rackNames = [...new Set(chunk.map(d => d.rack))];
 
-        // Check for existing inventory
-        let inventory = await tx.inventory.findFirst({
-          where: {
+    // 2️⃣ Upsert parts
+    const existingParts = await prisma.part.findMany({
+      where: { name: { in: partNames } },
+    });
+    const partMap = new Map(existingParts.map(p => [p.name, p]));
+    const missingParts = partNames.filter(n => !partMap.has(n));
+
+    if (missingParts.length > 0) {
+      await prisma.part.createMany({
+        data: missingParts.map(name => ({
+          name,
+          totalQty: 0,
+          availableQty: 0,
+        })),
+      });
+      const newParts = await prisma.part.findMany({
+        where: { name: { in: missingParts } },
+      });
+      newParts.forEach(p => partMap.set(p.name, p));
+    }
+
+    // 3️⃣ Upsert locations
+    const existingLocations = await prisma.location.findMany({
+      where: { rack: { in: rackNames } },
+    });
+    const locationMap = new Map(existingLocations.map(l => [l.rack, l]));
+    const missingLocations = rackNames.filter(r => !locationMap.has(r));
+
+    if (missingLocations.length > 0) {
+      await prisma.location.createMany({
+        data: missingLocations.map(r => ({ rack: r })),
+      });
+      const newLocations = await prisma.location.findMany({
+        where: { rack: { in: missingLocations } },
+      });
+      newLocations.forEach(l => locationMap.set(l.rack, l));
+    }
+
+    // 4️⃣ Process each inventory item with upsert
+    for (const item of chunk) {
+      const part = partMap.get(item.name)!;
+      const location = locationMap.get(item.rack)!;
+
+      // Upsert inventory
+      const inventory = await prisma.inventory.upsert({
+        where: {
+          locationId_partId_poll: {
+            // ✅ correct compound unique name
             partId: part.id,
             locationId: location.id,
-            poll: poll,
+            poll: item.poll,
           },
-        });
+        },
 
-        if (inventory) {
-          inventory = await tx.inventory.update({
-            where: { id: inventory.id },
-            data: {
-              qty: { increment: qty },
-              updatedAt: new Date(),
-            },
-          });
-        } else {
-          inventory = await tx.inventory.create({
-            data: {
-              partId: part.id,
-              locationId: location.id,
-              qty,
-              poll,
-            },
-          });
-        }
+        update: {
+          qty: { increment: item.qty },
+          updatedAt: new Date(),
+        },
+        create: {
+          partId: part.id,
+          locationId: location.id,
+          poll: item.poll,
+          qty: item.qty,
+        },
+      });
 
-        // Create inventory log
-        await tx.inventoryLog.create({
-          data: {
-            inventoryId: inventory.id,
-            eventNo: eventNo ?? null,
-            addedQty: qty,
-          },
-        });
-        await tx.part.update({
-          where: { id: part.id },
-          data: {
-            totalQty: { increment: qty },
-            availableQty: { increment: qty },
-          },
-        });
-        inventories.push(inventory);
-      } catch (error) {
-        throw new ApiError(
-          400,
-          `Failed to insert item: ${name}, eventNo: ${eventNo} — ${(error as Error).message}`,
-        );
-      }
+      // Inventory log
+      await prisma.inventoryLog.create({
+        data: {
+          inventoryId: inventory.id,
+          eventNo: item.eventNo ?? null,
+          addedQty: item.qty,
+        },
+      });
+
+      // Part update
+      await prisma.part.update({
+        where: { id: part.id },
+        data: {
+          totalQty: { increment: item.qty },
+          availableQty: { increment: item.qty },
+        },
+      });
+
+      inventories.push(inventory);
     }
-    return inventories;
-  });
+  }
+
+  return { message: "Multiple inventories added", count: inventories.length };
 };
 
 const getAllFromDB = async (
@@ -268,7 +304,6 @@ const getStocksAllFromDB = async (
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const whereConditions: any =
     andConditions.length > 0 ? { AND: andConditions } : {};
 

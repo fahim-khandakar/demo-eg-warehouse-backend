@@ -6,8 +6,6 @@ import { paginationHelpers } from "../../../../helpers/paginationHelper";
 import { IGenericResponse } from "../../../../interfaces/common";
 import { IPaginationOptions } from "../../../../interfaces/pagination";
 import prisma from "../../../../shared/prisma";
-import { sendEmail } from "../../Email/sendMail";
-import { orderCreatedTemplate } from "../../Email/Templates/orderNofityTemp";
 import {
   MyorderSearchableFields,
   orderSearchableFields,
@@ -133,18 +131,18 @@ const insertIntoDB = async (data: IOrderCreatedEvent): Promise<Order> => {
       where: { id: data.parts.partId },
     });
 
-    if (partner && part) {
-      await sendEmail(
-        partner.email,
-        "Your order has been Open",
-        orderCreatedTemplate(
-          partner.company,
-          result.order.invoiceId,
-          part.name,
-          result.orderPart.qty,
-        ),
-      );
-    }
+    // if (partner && part) {
+    //   await sendEmail(
+    //     partner.email,
+    //     "Your order has been Open",
+    //     orderCreatedTemplate(
+    //       partner.company,
+    //       result.order.invoiceId,
+    //       part.name,
+    //       result.orderPart.qty,
+    //     ),
+    //   );
+    // }
 
     return result.order;
   } catch (error) {

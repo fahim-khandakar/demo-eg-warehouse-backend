@@ -15,6 +15,75 @@ import {
 
 const OTP_EXPIRATION_MINUTES = 15;
 
+export async function login(
+  email: string,
+  password: string,
+  type: "user" | "partner",
+) {
+  if (type === "user") {
+    const account = await prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        password: true,
+        role: true,
+        details: {
+          select: {
+            powers: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!account) throw new ApiError(400, "User does not exist");
+
+    const isMatch = await bcrypt.compare(password, account.password);
+    if (!isMatch) throw new ApiError(403, "Password incorrect");
+
+    const payloadJwt = {
+      id: account.id,
+      email: account.email,
+      role: account?.role,
+      powers: account?.details?.powers?.map(p => p.id) || [],
+    };
+
+    const accessToken = jwt.sign(payloadJwt, config.jwt.secret!, {
+      expiresIn: config.jwt.expires_in,
+    });
+    const refreshToken = jwt.sign(payloadJwt, config.jwt.secret!, {
+      expiresIn: config.jwt.refresh_expires_in,
+    });
+
+    return { accessToken, refreshToken };
+  } else {
+    const account = await prisma.partner.findUnique({ where: { email } });
+    if (!account) throw new ApiError(400, "Partner does not exist");
+
+    const isMatch = await bcrypt.compare(password, account.password);
+    if (!isMatch) throw new ApiError(403, "Password incorrect");
+
+    const payloadJwt = {
+      id: account.id,
+      email: account.email,
+      role: "partner",
+      company: account.company,
+    };
+
+    const accessToken = jwt.sign(payloadJwt, config.jwt.secret!, {
+      expiresIn: config.jwt.expires_in,
+    });
+    const refreshToken = jwt.sign(payloadJwt, config.jwt.secret!, {
+      expiresIn: config.jwt.refresh_expires_in,
+    });
+
+    return { accessToken, refreshToken };
+  }
+}
+
 export async function validatePassword(
   email: string,
   password: string,
@@ -358,4 +427,5 @@ export const AuthService = {
   emailVerify,
   ResendEmailVerify,
   validatePassword,
+  login,
 };
