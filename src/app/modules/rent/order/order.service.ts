@@ -23,10 +23,9 @@ import { generateOrderId } from "./order.utils";
 const insertIntoDB = async (data: IOrderCreatedEvent): Promise<Order> => {
   try {
     const invoiceId = await generateOrderId();
-
     const { partId, qty, poll, description } = data.parts;
 
-    // STEP 1: Pre-check inventory (ALLOWED outside transaction)
+    // Pre-check inventory outside transaction
     const inventory = await prisma.inventory.findUnique({
       where: {
         locationId_partId_poll: {
@@ -46,91 +45,80 @@ const insertIntoDB = async (data: IOrderCreatedEvent): Promise<Order> => {
       );
     }
 
-    // STEP 2: RUN ATOMIC TRANSACTION (sequential style)
-    const [customerRequest, order, orderPart, updatedInventory, updatedPart] =
-      await prisma.$transaction(async tx => {
-        // 1. Create Customer Request
-        const customerRequest = await tx.customerRequest.create({
-          data: {
-            partnerId: data.partnerId,
-            caseId: data.caseId,
-            callDate: data.callDate,
-            approvalImage: data.approvalImage,
-            saidId: data.saidId,
-            eventNo: data.eventNo,
-            remarks: data.remarks,
-            statusId: 2,
-            parts: {
-              create: {
-                partId,
-                qty,
-                description: description ?? "",
-              },
-            },
-          },
-        });
-
-        // 2. Create Order linked to customerRequest
-        const order = await tx.order.create({
-          data: {
-            invoiceId,
-            partnerId: data.partnerId,
-            caseId: data.caseId,
-            callDate: data.callDate,
-            saidId: data.saidId,
-            eventNo: data.eventNo,
-            remarks: data.remarks,
-            statusId: 2,
-            qty,
-            customerRequest: {
-              connect: { id: customerRequest.id },
-            },
-          },
-        });
-
-        // 3. Create Order Part linked to order
-        const orderPart = await tx.orderPart.create({
-          data: {
-            orderId: order.id,
-            inventoryId: inventory.id,
-            description: description ?? "",
-            partId,
-            qty,
-          },
-        });
-
-        // 4. Update Inventory
-        const updatedInventory = await tx.inventory.update({
-          where: {
-            locationId_partId_poll: {
-              locationId: data.locationId,
+    // Run everything inside one transaction callback
+    const result = await prisma.$transaction(async tx => {
+      const customerRequest = await tx.customerRequest.create({
+        data: {
+          partnerId: data.partnerId,
+          caseId: data.caseId,
+          callDate: data.callDate,
+          approvalImage: data.approvalImage,
+          saidId: data.saidId,
+          eventNo: data.eventNo,
+          remarks: data.remarks,
+          statusId: 2,
+          parts: {
+            create: {
               partId,
-              poll,
+              qty,
+              description: description ?? "",
             },
           },
-          data: { qty: { decrement: qty } },
-        });
-
-        // 5. Update Part
-        const updatedPart = await tx.part.update({
-          where: { id: partId },
-          data: {
-            availableQty: { decrement: qty },
-            sell: { increment: qty },
-            loanQty: { increment: qty },
-          },
-        });
-
-        return [
-          customerRequest,
-          order,
-          orderPart,
-          updatedInventory,
-          updatedPart,
-        ];
+        },
       });
 
-    return order;
+      const order = await tx.order.create({
+        data: {
+          invoiceId,
+          partnerId: data.partnerId,
+          caseId: data.caseId,
+          callDate: data.callDate,
+          saidId: data.saidId,
+          eventNo: data.eventNo,
+          remarks: data.remarks,
+          statusId: 2,
+          qty,
+          customerRequest: {
+            connect: { id: customerRequest.id },
+          },
+        },
+      });
+
+      await tx.orderPart.create({
+        data: {
+          orderId: order.id,
+          inventoryId: inventory.id,
+          description: description ?? "",
+          partId,
+          qty,
+        },
+      });
+
+      await tx.inventory.update({
+        where: {
+          locationId_partId_poll: {
+            locationId: data.locationId,
+            partId,
+            poll,
+          },
+        },
+        data: { qty: { decrement: qty } },
+      });
+
+      await tx.part.update({
+        where: { id: partId },
+        data: {
+          availableQty: { decrement: qty },
+          sell: { increment: qty },
+          loanQty: { increment: qty },
+        },
+      });
+
+      // Return only what you need
+      return order;
+    });
+
+    return result;
   } catch (error) {
     throw new ApiError(400, (error as Error).message);
   }
