@@ -46,11 +46,11 @@ const insertIntoDB = async (data: IOrderCreatedEvent): Promise<Order> => {
       );
     }
 
-    // STEP 2: RUN ATOMIC TRANSACTION
+    // STEP 2: RUN ATOMIC TRANSACTION (sequential style)
     const [customerRequest, order, orderPart, updatedInventory, updatedPart] =
-      await prisma.$transaction([
+      await prisma.$transaction(async tx => {
         // 1. Create Customer Request
-        prisma.customerRequest.create({
+        const customerRequest = await tx.customerRequest.create({
           data: {
             partnerId: data.partnerId,
             caseId: data.caseId,
@@ -68,10 +68,10 @@ const insertIntoDB = async (data: IOrderCreatedEvent): Promise<Order> => {
               },
             },
           },
-        }),
+        });
 
-        // 2. Create Order
-        prisma.order.create({
+        // 2. Create Order linked to customerRequest
+        const order = await tx.order.create({
           data: {
             invoiceId,
             partnerId: data.partnerId,
@@ -82,30 +82,25 @@ const insertIntoDB = async (data: IOrderCreatedEvent): Promise<Order> => {
             remarks: data.remarks,
             statusId: 2,
             qty,
-            // Connect customerRequest after creation
             customerRequest: {
-              connect: {
-                // This will be linked through $transaction auto-index
-                // Refers to first query result
-                id: undefined as any,
-              },
+              connect: { id: customerRequest.id },
             },
           },
-        }),
+        });
 
-        // 3. Create Order Part
-        prisma.orderPart.create({
+        // 3. Create Order Part linked to order
+        const orderPart = await tx.orderPart.create({
           data: {
-            orderId: undefined as any, // replaced after transaction resolves
+            orderId: order.id,
             inventoryId: inventory.id,
             description: description ?? "",
             partId,
             qty,
           },
-        }),
+        });
 
         // 4. Update Inventory
-        prisma.inventory.update({
+        const updatedInventory = await tx.inventory.update({
           where: {
             locationId_partId_poll: {
               locationId: data.locationId,
@@ -113,34 +108,27 @@ const insertIntoDB = async (data: IOrderCreatedEvent): Promise<Order> => {
               poll,
             },
           },
-          data: {
-            qty: { decrement: qty },
-          },
-        }),
+          data: { qty: { decrement: qty } },
+        });
 
         // 5. Update Part
-        prisma.part.update({
+        const updatedPart = await tx.part.update({
           where: { id: partId },
           data: {
             availableQty: { decrement: qty },
             sell: { increment: qty },
             loanQty: { increment: qty },
           },
-        }),
-      ]);
+        });
 
-    // FIX linking: Render does NOT support callback transactions well
-    // So we do final linking OUTSIDE
-    await prisma.order.update({
-      where: { id: order.id },
-      data: {
-        customerRequest: {
-          connect: {
-            id: customerRequest.id,
-          },
-        },
-      },
-    });
+        return [
+          customerRequest,
+          order,
+          orderPart,
+          updatedInventory,
+          updatedPart,
+        ];
+      });
 
     return order;
   } catch (error) {
