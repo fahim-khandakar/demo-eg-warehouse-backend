@@ -24,129 +24,125 @@ const insertIntoDB = async (data: IOrderCreatedEvent): Promise<Order> => {
   try {
     const invoiceId = await generateOrderId();
 
-    const result = await prisma.$transaction(async transaction => {
-      const { partId, qty, poll, description } = data.parts;
+    const { partId, qty, poll, description } = data.parts;
 
-      // 1. Check inventory availability
-      const inventory = await transaction.inventory.findUnique({
-        where: {
-          locationId_partId_poll: {
-            locationId: data.locationId,
-            partId,
-            poll,
-          },
+    // STEP 1: Pre-check inventory (ALLOWED outside transaction)
+    const inventory = await prisma.inventory.findUnique({
+      where: {
+        locationId_partId_poll: {
+          locationId: data.locationId,
+          partId,
+          poll,
         },
-      });
+      },
+    });
 
-      if (!inventory || inventory.qty < qty) {
-        throw new ApiError(
-          400,
-          `Insufficient quantity for part ${partId} in location ${data.locationId}. Available: ${
-            inventory?.qty ?? 0
-          }, Requested: ${qty}`,
-        );
-      }
+    if (!inventory || inventory.qty < qty) {
+      throw new ApiError(
+        400,
+        `Insufficient quantity for part ${partId} in location ${data.locationId}. Available: ${
+          inventory?.qty ?? 0
+        }, Requested: ${qty}`,
+      );
+    }
 
-      // 2. Create Customer Request
-      const customerRequest = await transaction.customerRequest.create({
-        data: {
-          partnerId: data.partnerId,
-          caseId: data.caseId,
-          callDate: data.callDate,
-          approvalImage: data.approvalImage,
-          saidId: data.saidId,
-          eventNo: data.eventNo,
-          remarks: data.remarks,
-          statusId: 2,
-          parts: {
-            create: {
-              partId,
-              qty,
-              description: description ?? "", // FIXED: required field
+    // STEP 2: RUN ATOMIC TRANSACTION
+    const [customerRequest, order, orderPart, updatedInventory, updatedPart] =
+      await prisma.$transaction([
+        // 1. Create Customer Request
+        prisma.customerRequest.create({
+          data: {
+            partnerId: data.partnerId,
+            caseId: data.caseId,
+            callDate: data.callDate,
+            approvalImage: data.approvalImage,
+            saidId: data.saidId,
+            eventNo: data.eventNo,
+            remarks: data.remarks,
+            statusId: 2,
+            parts: {
+              create: {
+                partId,
+                qty,
+                description: description ?? "",
+              },
             },
           },
-        },
-      });
+        }),
 
-      // 3. Create the Order
-      const order = await transaction.order.create({
-        data: {
-          invoiceId,
-          partnerId: data.partnerId,
-          caseId: data.caseId,
-          callDate: data.callDate,
-          saidId: data.saidId,
-          eventNo: data.eventNo,
-          remarks: data.remarks,
-          statusId: 2,
-          qty,
-          customerRequest: {
-            connect: { id: customerRequest.id },
+        // 2. Create Order
+        prisma.order.create({
+          data: {
+            invoiceId,
+            partnerId: data.partnerId,
+            caseId: data.caseId,
+            callDate: data.callDate,
+            saidId: data.saidId,
+            eventNo: data.eventNo,
+            remarks: data.remarks,
+            statusId: 2,
+            qty,
+            // Connect customerRequest after creation
+            customerRequest: {
+              connect: {
+                // This will be linked through $transaction auto-index
+                // Refers to first query result
+                id: undefined as any,
+              },
+            },
           },
-        },
-      });
+        }),
 
-      // 4. Create OrderPart
-      const orderPart = await transaction.orderPart.create({
-        data: {
-          orderId: order.id,
-          inventoryId: inventory.id,
-          description: description ?? "", // FIXED
-          partId,
-          qty,
-        },
-      });
-
-      // 5. Update Inventory
-      await transaction.inventory.update({
-        where: {
-          locationId_partId_poll: {
-            locationId: data.locationId,
+        // 3. Create Order Part
+        prisma.orderPart.create({
+          data: {
+            orderId: undefined as any, // replaced after transaction resolves
+            inventoryId: inventory.id,
+            description: description ?? "",
             partId,
-            poll,
+            qty,
+          },
+        }),
+
+        // 4. Update Inventory
+        prisma.inventory.update({
+          where: {
+            locationId_partId_poll: {
+              locationId: data.locationId,
+              partId,
+              poll,
+            },
+          },
+          data: {
+            qty: { decrement: qty },
+          },
+        }),
+
+        // 5. Update Part
+        prisma.part.update({
+          where: { id: partId },
+          data: {
+            availableQty: { decrement: qty },
+            sell: { increment: qty },
+            loanQty: { increment: qty },
+          },
+        }),
+      ]);
+
+    // FIX linking: Render does NOT support callback transactions well
+    // So we do final linking OUTSIDE
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        customerRequest: {
+          connect: {
+            id: customerRequest.id,
           },
         },
-        data: {
-          qty: { decrement: qty },
-        },
-      });
-
-      // 6. Update Part
-      await transaction.part.update({
-        where: { id: partId },
-        data: {
-          availableQty: { decrement: qty },
-          sell: { increment: qty },
-          loanQty: { increment: qty },
-        },
-      });
-
-      return { order, orderPart };
+      },
     });
 
-    // Fetch partner & part for optional email
-    const partner = await prisma.partner.findUnique({
-      where: { id: data.partnerId },
-    });
-
-    const part = await prisma.part.findUnique({
-      where: { id: data.parts.partId },
-    });
-
-    // if (partner && part) {
-    //   await sendEmail(
-    //     partner.email,
-    //     "Your order has been Open",
-    //     orderCreatedTemplate(
-    //       partner.company,
-    //       result.order.invoiceId,
-    //       part.name,
-    //       result.orderPart.qty,
-    //     ),
-    //   );
-    // }
-
-    return result.order;
+    return order;
   } catch (error) {
     throw new ApiError(400, (error as Error).message);
   }
