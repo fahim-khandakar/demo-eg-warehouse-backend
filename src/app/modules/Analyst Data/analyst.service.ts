@@ -90,6 +90,7 @@ export const getLoanAnalystFromDB = async (
     prisma.inventory.aggregate({
       where: inventoryDateFilter,
       _sum: { qty: true },
+      take: 10,
     }),
 
     // 9) inventory grouped by locationId
