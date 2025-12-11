@@ -27,7 +27,7 @@ const insertIntoDB = async (data: IOrderCreatedEvent): Promise<Order> => {
     const result = await prisma.$transaction(async transaction => {
       const { partId, qty, poll, description } = data.parts;
 
-      // 1. Check inventory availability
+      // 1. Check inventory availability (using transaction)
       const inventory = await transaction.inventory.findUnique({
         where: {
           locationId_partId_poll: {
@@ -45,7 +45,8 @@ const insertIntoDB = async (data: IOrderCreatedEvent): Promise<Order> => {
         );
       }
 
-      const customerRequest = await prisma.customerRequest.create({
+      // 2. Create the CustomerRequest (use transaction and proper nested create)
+      const customerRequest = await transaction.customerRequest.create({
         data: {
           partnerId: data.partnerId,
           caseId: data.caseId,
@@ -55,17 +56,21 @@ const insertIntoDB = async (data: IOrderCreatedEvent): Promise<Order> => {
           eventNo: data.eventNo,
           remarks: data.remarks,
           statusId: 2,
+          // parts is a single relation in your schema (CustomerRequestedPart?), so create single object
           parts: {
             create: {
-              partId: data.parts.partId,
               qty: data.parts.qty,
-              description: data.parts.description,
+              description: data.parts.description ?? "Requested part",
+              // connect to existing Part via relation
+              part: {
+                connect: { id: data.parts.partId },
+              },
             },
           },
         },
       });
 
-      // 2. Create the Order
+      // 3. Create the Order
       const order = await transaction.order.create({
         data: {
           invoiceId,
@@ -77,26 +82,29 @@ const insertIntoDB = async (data: IOrderCreatedEvent): Promise<Order> => {
           remarks: data.remarks,
           statusId: 2,
           qty,
-          customerRequest: {
-            connect: {
-              id: customerRequest?.id,
-            },
-          },
+          // do NOT attempt to connect customerRequest here if the relation is declared on CustomerRequest side.
+          // We'll update customerRequest.orderId below to link them.
         },
       });
 
-      // 3. Create the OrderPart (single entry)
+      // 4. Update CustomerRequest to reference this Order (set orderId)
+      await transaction.customerRequest.update({
+        where: { id: customerRequest.id },
+        data: { order: { connect: { id: order.id } } }, // sets customerRequest.orderId = order.id
+      });
+
+      // 5. Create the OrderPart
       const orderPart = await transaction.orderPart.create({
         data: {
           orderId: order.id,
           inventoryId: inventory.id,
-          description,
+          description: description ?? "",
           partId,
           qty,
         },
       });
 
-      // 4. Update Inventory
+      // 6. Update Inventory (decrement)
       await transaction.inventory.update({
         where: {
           locationId_partId_poll: {
@@ -110,7 +118,7 @@ const insertIntoDB = async (data: IOrderCreatedEvent): Promise<Order> => {
         },
       });
 
-      // 5. Update Part
+      // 7. Update Part counters
       await transaction.part.update({
         where: { id: partId },
         data: {
@@ -120,10 +128,10 @@ const insertIntoDB = async (data: IOrderCreatedEvent): Promise<Order> => {
         },
       });
 
-      return { order, orderPart }; // return both for email
+      return { order, orderPart };
     });
 
-    // Fetch partner and part info
+    // Fetch partner and part info outside transaction (ok)
     const partner = await prisma.partner.findUnique({
       where: { id: data.partnerId },
     });
@@ -131,18 +139,7 @@ const insertIntoDB = async (data: IOrderCreatedEvent): Promise<Order> => {
       where: { id: data.parts.partId },
     });
 
-    // if (partner && part) {
-    //   await sendEmail(
-    //     partner.email,
-    //     "Your order has been Open",
-    //     orderCreatedTemplate(
-    //       partner.company,
-    //       result.order.invoiceId,
-    //       part.name,
-    //       result.orderPart.qty,
-    //     ),
-    //   );
-    // }
+    // optionally send email...
 
     return result.order;
   } catch (error) {
